@@ -32,6 +32,7 @@ contract ZKLend {
     event ZKLend__LiquidityWithdrawn(address indexed user, uint256 amount);
     event ZKLend__LoanTaken(address indexed user, uint256 amount, uint256 collateral);
     event ZKLend__LoanRepaid(address indexed user, uint256 amount);
+    event ZKLend__ExceedCollateralFactor(address indexed user, uint256 requested, uint256 maxAllowed);
 
     constructor(address collateralToken, address lendToken, address lpToken) {
         i_collateralToken = IERC20(collateralToken);
