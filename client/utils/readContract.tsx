@@ -1,7 +1,7 @@
 import { Address } from "viem";
 import { useReadContract } from "wagmi";
 import { abi } from "@/abi/ZKLend.json";
-import { collateralConfig } from "./writeContract";
+import { collateralConfig, lendTokenConfig } from "./writeContract";
 
 export const wagmiContractConfig = {
   address: process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`,
@@ -16,6 +16,21 @@ export function getUserBalanceCollateralToken(user: Address) {
     refetch,
   } = useReadContract({
     ...collateralConfig,
+    functionName: "balanceOf",
+    args: [user],
+  });
+
+  return { balance, error, isPending, refetch };
+}
+
+export function getUserBalanceLendToken(user: Address) {
+  const {
+    data: balance,
+    error,
+    isPending,
+    refetch,
+  } = useReadContract({
+    ...lendTokenConfig,
     functionName: "balanceOf",
     args: [user],
   });
