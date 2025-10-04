@@ -42,17 +42,81 @@ export function mintCollateralToken() {
       const normalizedAmount =
         typeof amount === "bigint" ? amount : BigInt(amount);
 
+      if (!address) {
+        throw new Error("Connect your wallet before minting tokens.");
+      }
+
       return writeContractAsync({
         ...collateralConfig,
         functionName: "mint",
-        args: [address, normalizedAmount],
+        args: [address as Address, normalizedAmount] as const,
+      });
+    },
+    [address, writeContractAsync]
+  );
+
+  return {
+    mintCollateralToken,
+    hash,
+    error,
+    isPending,
+  };
+}
+
+export function approveCollateral() {
+  const {
+    data: hash,
+    error,
+    isPending,
+    writeContractAsync,
+  } = useWriteContract();
+
+  const approveCollateral = useCallback(
+    async (amount: bigint | number | string) => {
+      const normalizedAmount =
+        typeof amount === "bigint" ? amount : BigInt(amount);
+
+      return writeContractAsync({
+        ...collateralConfig,
+        functionName: "approve",
+        args: [zklendConfig.address, normalizedAmount] as const,
       });
     },
     [writeContractAsync]
   );
 
   return {
-    mintCollateralToken,
+    approveCollateral,
+    hash,
+    error,
+    isPending,
+  };
+}
+
+export function addCollateral() {
+  const {
+    data: hash,
+    error,
+    isPending,
+    writeContractAsync,
+  } = useWriteContract();
+
+  const depositCollateral = useCallback(
+    async (amount: bigint | number | string) => {
+      const normalizedAmount =
+        typeof amount === "bigint" ? amount : BigInt(amount);
+
+      return writeContractAsync({
+        ...zklendConfig,
+        functionName: "depositCollateral",
+        args: [normalizedAmount] as const,
+      });
+    },
+    [writeContractAsync]
+  );
+
+  return {
+    depositCollateral,
     hash,
     error,
     isPending,

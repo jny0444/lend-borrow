@@ -1,17 +1,22 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount } from "wagmi";
 import { formatEther } from "viem";
 import type { Address } from "viem";
 import {
   getTotalLiquidity,
+  getUserBalanceCollateralToken,
   getUserCollateral,
   getUserLiquidity,
   getUserLoanCount,
 } from "@/utils/readContract";
-import { mintCollateralToken as useMintCollateralToken } from "@/utils/writeContract";
+import {
+  mintCollateralToken as useMintCollateralToken,
+  addCollateral as useAddCollateral,
+  approveCollateral as useApproveCollateral,
+} from "@/utils/writeContract";
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as Address;
 
@@ -33,7 +38,6 @@ function formatTokenAmount(value: unknown, symbol = "ETH") {
 function formatCount(value: unknown) {
   return typeof value === "bigint" ? value.toString() : "--";
 }
-
 function formatError(error: unknown) {
   if (!error) return undefined;
   if (error instanceof Error) return error.message;
@@ -51,6 +55,9 @@ export default function Home() {
   const [mintAmount, setMintAmount] = useState("0");
   const [mintFeedback, setMintFeedback] = useState<string | null>(null);
   const [mintFormError, setMintFormError] = useState<string | null>(null);
+  const [depositAmount, setDepositAmount] = useState("0");
+  const [depositFeedback, setDepositFeedback] = useState<string | null>(null);
+  const [depositFormError, setDepositFormError] = useState<string | null>(null);
 
   const {
     mintCollateralToken: executeMintCollateral,
@@ -60,31 +67,88 @@ export default function Home() {
   } = useMintCollateralToken();
 
   const {
+    depositCollateral: executeDepositCollateral,
+    hash: depositHash,
+    error: depositError,
+    isPending: depositPending,
+  } = useAddCollateral();
+
+  const {
+    approveCollateral: executeApproveCollateral,
+    hash: approveHash,
+    error: approveError,
+    isPending: approvePending,
+  } = useApproveCollateral();
+
+  const {
+    balance: collateralTokenBalance,
+    error: collateralTokenBalanceError,
+    isPending: collateralTokenBalancePending,
+    refetch: collateralTokenBalanceRefetch,
+  } = getUserBalanceCollateralToken(userAddress);
+
+  const {
     balance,
     error: collateralError,
     isPending: collateralPending,
+    refetch: collateralRefetch,
   } = getUserCollateral(userAddress);
   const {
     liquidity,
     error: liquidityError,
     isPending: liquidityPending,
+    refetch: liquidityRefetch,
   } = getUserLiquidity(userAddress);
   const {
     loanCount,
     error: loanCountError,
     isPending: loanCountPending,
+    refetch: loanCountRefetch,
   } = getUserLoanCount(userAddress);
   const {
     totalLiquidity,
     error: totalLiquidityError,
     isPending: totalLiquidityPending,
+    refetch: totalLiquidityRefetch,
   } = getTotalLiquidity();
 
   const shortAddress = address
     ? `${address.slice(0, 6)}...${address.slice(-4)}`
     : "Not connected";
 
+  const refreshMetrics = useCallback(async () => {
+    if (!isConnected || !address) {
+      return;
+    }
+
+    try {
+      await Promise.all([
+        collateralTokenBalanceRefetch(),
+        collateralRefetch(),
+        liquidityRefetch(),
+        loanCountRefetch(),
+        totalLiquidityRefetch(),
+      ]);
+    } catch (error) {
+      console.error("Failed to refetch user metrics", error);
+    }
+  }, [
+    address,
+    isConnected,
+    collateralTokenBalanceRefetch,
+    collateralRefetch,
+    liquidityRefetch,
+    loanCountRefetch,
+    totalLiquidityRefetch,
+  ]);
+
   const summaryCards = [
+    {
+      label: "Wallet Collateral Tokens",
+      value: formatTokenAmount(collateralTokenBalance),
+      pending: collateralTokenBalancePending,
+      error: formatError(collateralTokenBalanceError),
+    },
     {
       label: "Your Collateral",
       value: formatTokenAmount(balance),
@@ -114,6 +178,10 @@ export default function Home() {
     },
   ];
 
+  useEffect(() => {
+    void refreshMetrics();
+  }, [refreshMetrics, mintHash, depositHash]);
+
   async function handleMintSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMintFormError(null);
@@ -136,14 +204,53 @@ export default function Home() {
 
       await executeMintCollateral(parsed);
       setMintFeedback(
-        `Minted ${parsed.toString()} token${parsed === BigInt(1) ? "" : "s"}.`,
+        `Minted ${parsed.toString()} token${parsed === BigInt(1) ? "" : "s"}.`
       );
       setMintAmount("0");
+      await refreshMetrics();
     } catch (caught) {
       if (caught instanceof Error) {
         setMintFormError(caught.message);
       } else {
         setMintFormError("Unable to process mint request.");
+      }
+    }
+  }
+
+  async function handleDepositSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setDepositFormError(null);
+    setDepositFeedback(null);
+
+    if (!isConnected) {
+      setDepositFormError("Connect your wallet before depositing collateral.");
+      return;
+    }
+
+    try {
+      const trimmed = depositAmount.trim();
+      if (!trimmed) {
+        throw new Error("Enter an amount to deposit.");
+      }
+      const parsed = BigInt(trimmed);
+      if (parsed <= BigInt(0)) {
+        throw new Error("Amount must be greater than zero.");
+      }
+
+      await executeApproveCollateral(parsed);
+      await executeDepositCollateral(parsed);
+      setDepositFeedback(
+        `Deposited ${parsed.toString()} token${
+          parsed === BigInt(1) ? "" : "s"
+        } as collateral.`
+      );
+      setDepositAmount("0");
+      await refreshMetrics();
+    } catch (caught) {
+      if (caught instanceof Error) {
+        setDepositFormError(caught.message);
+      } else {
+        setDepositFormError("Unable to process deposit request.");
       }
     }
   }
@@ -207,7 +314,89 @@ export default function Home() {
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-xl font-medium text-slate-800">Mint Collateral Tokens</h2>
+        <h2 className="text-xl font-medium text-slate-800">
+          Deposit Collateral
+        </h2>
+        <form
+          onSubmit={handleDepositSubmit}
+          className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+        >
+          <div>
+            <label
+              htmlFor="deposit-amount"
+              className="block text-sm font-medium text-slate-600"
+            >
+              Amount to Deposit (whole tokens)
+            </label>
+            <input
+              id="deposit-amount"
+              name="deposit-amount"
+              type="number"
+              min="0"
+              step="1"
+              inputMode="numeric"
+              value={depositAmount}
+              onChange={(event) => setDepositAmount(event.target.value)}
+              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 focus:border-blue-500 focus:outline-none focus:ring"
+              placeholder="e.g. 50"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+            <button
+              type="submit"
+              disabled={depositPending || approvePending || !isConnected}
+              className="rounded-md bg-emerald-600 px-4 py-2 font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {depositPending || approvePending
+                ? "Processing…"
+                : "Deposit Collateral"}
+            </button>
+            <span>
+              {isConnected
+                ? `Connected account: ${shortAddress}`
+                : "Connect your wallet to deposit."}
+            </span>
+          </div>
+
+          {depositFormError ? (
+            <p className="text-sm text-red-500">{depositFormError}</p>
+          ) : null}
+
+          {depositFeedback ? (
+            <p className="text-sm text-green-600">{depositFeedback}</p>
+          ) : null}
+
+          {depositError ? (
+            <p className="text-xs text-red-500">
+              {formatError(depositError) ?? "Transaction failed."}
+            </p>
+          ) : null}
+
+          {approveError ? (
+            <p className="text-xs text-red-500">
+              {formatError(approveError) ?? "Approval failed."}
+            </p>
+          ) : null}
+
+          {depositHash ? (
+            <p className="break-all text-xs text-slate-500">
+              Transaction hash: {depositHash}
+            </p>
+          ) : null}
+
+          {approveHash ? (
+            <p className="break-all text-xs text-slate-500">
+              Approval hash: {approveHash}
+            </p>
+          ) : null}
+        </form>
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-xl font-medium text-slate-800">
+          Mint Collateral Tokens
+        </h2>
         <form
           onSubmit={handleMintSubmit}
           className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
