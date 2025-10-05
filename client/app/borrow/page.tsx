@@ -5,6 +5,7 @@ import { parseUnits, formatEther } from "viem";
 import type { Abi, Address } from "viem";
 import { useAccount, useReadContracts } from "wagmi";
 import {
+  getUserBalanceCollateralToken,
   getUserCollateral,
   getUserLoanCount,
   wagmiContractConfig,
@@ -82,6 +83,12 @@ export default function Borrow() {
     isPending: collateralPending,
     refetch: refetchCollateral,
   } = getUserCollateral(userAddress);
+
+  const {
+    balance: walletCollateralBalance,
+    error: walletCollateralError,
+    isPending: walletCollateralPending,
+  } = getUserBalanceCollateralToken(userAddress);
 
   const {
     loanCount,
@@ -405,7 +412,27 @@ export default function Borrow() {
           ) : null}
         </form>
 
-        <div className="grid gap-4 rounded-xl border border-black/10 bg-black/[0.02] p-4 sm:grid-cols-2">
+        <div className="grid gap-4 rounded-xl border border-black/10 bg-black/[0.02] p-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="rounded-lg border border-dotted border-black/30 bg-white/70 px-4 py-3 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-black/60">
+              Wallet collateral balance
+            </p>
+            <p className="text-lg font-semibold text-black">
+              {formatTokenAmount(walletCollateralBalance)}
+            </p>
+            {walletCollateralPending ? (
+              <p className="mt-2 text-[11px] text-black/50">
+                Fetching wallet balance…
+              </p>
+            ) : null}
+            {walletCollateralError ? (
+              <p className="mt-2 text-[11px] text-red-500">
+                {walletCollateralError instanceof Error
+                  ? walletCollateralError.message
+                  : String(walletCollateralError)}
+              </p>
+            ) : null}
+          </div>
           <div className="rounded-lg border border-dotted border-black/30 bg-white/70 px-4 py-3 text-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-black/60">
               Deposited collateral
@@ -432,7 +459,7 @@ export default function Borrow() {
               </p>
             ) : null}
           </div>
-          <div className="rounded-lg border border-dotted border-black/30 bg-white/70 px-4 py-3 text-sm sm:col-span-2">
+          <div className="rounded-lg border border-dotted border-black/30 bg-white/70 px-4 py-3 text-sm sm:col-span-2 lg:col-span-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-black/60">
               Active loans
             </p>
