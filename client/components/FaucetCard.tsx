@@ -64,7 +64,7 @@ export default function FaucetCard({
         type="button"
         onClick={onClick}
         disabled={pending}
-        className="mt-auto w-full rounded-full bg-black px-4 py-3 text-center text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-auto w-full rounded-full bg-black px-4 py-3 text-center text-white shadow-[0_10px_24px_rgba(0,0,0,0.24)] transition-all disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
       >
         {pending ? "Processing…" : buttonLabel}
       </button>
